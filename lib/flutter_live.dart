@@ -9,7 +9,7 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 /// The live streaming tools for flutter.
 class FlutterLive {
   /// The channel for platform.
-  static const MethodChannel _channel = const MethodChannel('flutter_live');
+  static const MethodChannel _channel = MethodChannel('flutter_live');
 
   /// Get the platform information.
   static Future<String> get platformVersion async {
@@ -109,61 +109,54 @@ class RealtimePlayer {
 ///   api: http://d.ossrs.net:11985/rtc/v1/play/
 ///   streamUrl: "webrtc://d.ossrs.net:11985/live/livestream"
 class WebRTCUri {
+  WebRTCUri._({required this.api, required this.streamUrl});
+
   /// The api server url for WebRTC streaming.
-  String api;
+  final String api;
+
   /// The stream url to play or publish.
-  String streamUrl;
+  final String streamUrl;
 
   /// Parse the url to WebRTC uri.
   static WebRTCUri parse(String url) {
-    Uri uri = Uri.parse(url);
+    final Uri uri = Uri.parse(url);
 
-    var schema = 'https'; // For native, default to HTTPS
-    if (uri.queryParameters.containsKey('schema')) {
-      schema = uri.queryParameters['schema'];
-    } else {
-      schema = 'https';
+    final String schema = uri.queryParameters['schema'] ?? 'https';
+
+    final int port = uri.port > 0
+        ? uri.port
+        : (schema == 'http' ? 1985 : 443);
+
+    String apiPath = uri.queryParameters['play'] ?? '/rtc/v1/play/';
+    if (!apiPath.startsWith('/')) {
+      apiPath = '/$apiPath';
     }
 
-    var port = (uri.port > 0)? uri.port : 443;
-    if (schema == 'https') {
-      port = (uri.port > 0)? uri.port : 443;
-    } else if (schema == 'http') {
-      port = (uri.port > 0)? uri.port : 1985;
-    }
-
-    var api = '/rtc/v1/play/';
-    if (uri.queryParameters.containsKey('play')) {
-      api = uri.queryParameters['play'];
-    }
-
-    var apiParams = [];
-    for (var key in uri.queryParameters.keys) {
+    final List<String> apiParams = [];
+    for (final String key in uri.queryParameters.keys) {
       if (key != 'api' && key != 'play' && key != 'schema') {
-        apiParams.add('${key}=${uri.queryParameters[key]}');
+        apiParams.add('$key=${uri.queryParameters[key]}');
       }
     }
 
-    var apiUrl = '${schema}://${uri.host}:${port}${api}';
-    if (!apiParams.isEmpty) {
-      apiUrl += '?' + apiParams.join('&');
+    var apiUrl = '$schema://${uri.host}:$port$apiPath';
+    if (apiParams.isNotEmpty) {
+      apiUrl += '?${apiParams.join('&')}';
     }
 
-    WebRTCUri r = WebRTCUri();
-    r.api = apiUrl;
-    r.streamUrl = url;
-    print('Url ${url} parsed to api=${r.api}, stream=${r.streamUrl}');
+    final r = WebRTCUri._(api: apiUrl, streamUrl: url);
+    print('Url $url parsed to api=${r.api}, stream=${r.streamUrl}');
     return r;
   }
 }
 
 /// A WebRTC player, using [flutter_webrtc](https://pub.dev/packages/flutter_webrtc)
 class WebRTCPlayer {
-  webrtc.AddStreamCallback _onRemoteStream;
-  webrtc.RTCPeerConnection _pc;
+  void Function(webrtc.MediaStream)? _onRemoteStream;
+  webrtc.RTCPeerConnection? _pc;
 
   /// When got a remote stream.
-  set onRemoteStream(webrtc.AddStreamCallback v) {
+  set onRemoteStream(void Function(webrtc.MediaStream) v) {
     _onRemoteStream = v;
   }
 
@@ -175,7 +168,7 @@ class WebRTCPlayer {
   /// [url] must a path parsed by [WebRTCUri.parse] in https://github.com/rtcdn/rtcdn-draft
   Future<void> play(String url) async {
     if (_pc != null) {
-      await _pc.close();
+      await _pc!.close();
     }
 
     // Create the peer connection.
@@ -187,36 +180,38 @@ class WebRTCPlayer {
     print('WebRTC: createPeerConnection done');
 
     // Setup the peer connection.
-    _pc.onAddStream = (webrtc.MediaStream stream) {
+    _pc!.onAddStream = (webrtc.MediaStream stream) {
       print('WebRTC: got stream ${stream.id}');
       if (_onRemoteStream == null) {
         print('Warning: Stream ${stream.id} is leak');
         return;
       }
-      _onRemoteStream(stream);
+      _onRemoteStream!(stream);
     };
 
-    _pc.addTransceiver(
+    await _pc!.addTransceiver(
         kind: webrtc.RTCRtpMediaType.RTCRtpMediaTypeAudio,
         init: webrtc.RTCRtpTransceiverInit(direction: webrtc.TransceiverDirection.RecvOnly),
     );
-    _pc.addTransceiver(
+    await _pc!.addTransceiver(
       kind: webrtc.RTCRtpMediaType.RTCRtpMediaTypeVideo,
       init: webrtc.RTCRtpTransceiverInit(direction: webrtc.TransceiverDirection.RecvOnly),
     );
     print('WebRTC: Setup PC done, A|V RecvOnly');
 
     // Start SDP handshake.
-    webrtc.RTCSessionDescription offer = await _pc.createOffer({
+    final webrtc.RTCSessionDescription offer = await _pc!.createOffer({
       'mandatory': {'OfferToReceiveAudio': true, 'OfferToReceiveVideo': true},
     });
-    await _pc.setLocalDescription(offer);
-    print('WebRTC: createOffer, ${offer.type} is ${offer.sdp.replaceAll('\n', '\\n').replaceAll('\r', '\\r')}');
+    await _pc!.setLocalDescription(offer);
+    final offerSdp = offer.sdp ?? '';
+    print('WebRTC: createOffer, ${offer.type} is ${offerSdp.replaceAll('\n', '\\n').replaceAll('\r', '\\r')}');
 
-    webrtc.RTCSessionDescription answer = await _handshake(url, offer.sdp);
-    print('WebRTC: got ${answer.type} is ${answer.sdp.replaceAll('\n', '\\n').replaceAll('\r', '\\r')}');
+    final webrtc.RTCSessionDescription answer = await _handshake(url, offerSdp);
+    final answerSdp = answer.sdp ?? '';
+    print('WebRTC: got ${answer.type} is ${answerSdp.replaceAll('\n', '\\n').replaceAll('\r', '\\r')}');
 
-    await _pc.setRemoteDescription(answer);
+    await _pc!.setRemoteDescription(answer);
   }
 
   /// Handshake to exchange SDP, send offer and got answer.
@@ -252,7 +247,11 @@ class WebRTCPlayer {
         return Future.error(reply);
       }
 
-      return Future.value(webrtc.RTCSessionDescription(o['sdp'], 'answer'));
+      final sdp = o['sdp'];
+      if (sdp is! String) {
+        return Future.error('Invalid sdp in response: $reply');
+      }
+      return Future.value(webrtc.RTCSessionDescription(sdp, 'answer'));
     } finally {
       client.close();
     }
@@ -260,9 +259,9 @@ class WebRTCPlayer {
 
   /// Dispose the player.
   void dispose() {
-    if (_pc != null) {
-      _pc.close();
-    }
+    final pc = _pc;
+    _pc = null;
+    pc?.close();
   }
 }
 

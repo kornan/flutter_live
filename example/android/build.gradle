@@ -1,31 +1,33 @@
-buildscript {
-    ext.kotlin_version = '1.3.50'
-    repositories {
-        google()
-        jcenter()
-    }
-
-    dependencies {
-        classpath 'com.android.tools.build:gradle:3.5.0'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    }
-}
-
 allprojects {
     repositories {
         google()
-        jcenter()
+        mavenCentral()
     }
 }
 
-rootProject.buildDir = '../build'
+// AGP 8+ requires `namespace` on every Android library; some pub plugins predate this field.
+// Apply as the library plugin is applied (before variant configuration), not in afterEvaluate.
+subprojects { sub ->
+    sub.pluginManager.withPlugin("com.android.library") {
+        def legacyNamespaces = [
+                "fijkplayer"      : "com.befovy.fijkplayer",
+                "flutter_webrtc"  : "com.cloudwebrtc.webrtc",
+        ]
+        def pkg = legacyNamespaces[sub.name]
+        if (pkg != null) {
+            sub.android.namespace = pkg
+        }
+    }
+}
+
+rootProject.buildDir = file("../build")
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }
 subprojects {
-    project.evaluationDependsOn(':app')
+    project.evaluationDependsOn(":app")
 }
 
-task clean(type: Delete) {
+tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }

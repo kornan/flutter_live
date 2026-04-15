@@ -1,12 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:package_info/package_info.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'dart:io' show Platform;
 
 import 'package:flutter_live/flutter_live.dart' as flutter_live;
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 import 'package:fijkplayer/fijkplayer.dart' as fijkplayer;
-import 'package:camera_with_rtmp/camera.dart' as camera;
+import 'package:rtmp_streaming/camera.dart' as camera;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'privacy.dart';
 
@@ -24,17 +26,22 @@ class Home extends StatefulWidget {
 
 class _HomeState extends State<Home> {
   // Platform information.
-  PackageInfo _info = PackageInfo(version: '0.0.0', buildNumber: '0');
+  PackageInfo _info = PackageInfo(
+    appName: '',
+    packageName: '',
+    version: '0.0.0',
+    buildNumber: '0',
+  );
 
   // The url to play or publish.
-  String _url; // The final url, should equals to controller.text
+  String _url = '';
   final TextEditingController _urlController = TextEditingController();
 
   // For publisher.
   bool _isPublish = false;
   bool _isPublishing = false;
   // The controller for publisher.
-  camera.CameraController _cameraController = null;
+  camera.CameraController? _cameraController;
 
   @override
   Widget build(BuildContext context) {
@@ -74,7 +81,7 @@ class _HomeState extends State<Home> {
   void dispose() {
     super.dispose();
     _urlController.dispose();
-    disposeCamera();
+    unawaited(disposeCamera());
     print('Main state disposed');
   }
 
@@ -97,21 +104,22 @@ class _HomeState extends State<Home> {
   }
 
   bool isUrlValid() {
-    return _url != null && _url.contains('://');
+    return _url.contains('://');
   }
 
-  void disposeCamera() async {
-    if (_cameraController == null) {
+  Future<void> disposeCamera() async {
+    final c = _cameraController;
+    if (c == null) {
       return;
     }
     _isPublishing = false;
-    await _cameraController.stopVideoStreaming();
-    await _cameraController.dispose();
+    await c.stopVideoStreaming();
+    await c.dispose();
     _cameraController = null;
     print('Camera disposed, publish=$_isPublish, publishing=$_isPublishing');
   }
 
-  void stopPublish() async {
+  Future<void> stopPublish() async {
     await disposeCamera();
     setState(() { });
     print('Stop publish url=$_url, publishing=$_isPublishing, controller=${_cameraController?.value.isInitialized}');
@@ -150,7 +158,7 @@ class _HomeState extends State<Home> {
       }
 
       camera.CameraDescription desc = cameras[0];
-      for (var c in cameras) {
+      for (final c in cameras) {
         if (c.lensDirection == camera.CameraLensDirection.front) {
           desc = c;
           break;
@@ -158,15 +166,16 @@ class _HomeState extends State<Home> {
       }
       print('Use camera ${desc.name} ${desc.lensDirection}');
 
-      _cameraController = camera.CameraController(desc, camera.ResolutionPreset.low);
-      _cameraController.addListener(() {
+      _cameraController =
+          camera.CameraController(camera.ResolutionPreset.low);
+      _cameraController!.addListener(() {
         setState(() { print('got camera event'); });
       });
 
-      await _cameraController.initialize();
+      await _cameraController!.initialize(desc);
       print('Camera initialized ok');
 
-      await _cameraController.startVideoStreaming(_url, bitrate: 300 * 1000);
+      await _cameraController!.startVideoStreaming(_url, bitrate: 300 * 1000);
       print('Start streaming to $_url');
 
       setState(() { _isPublishing = true; });
@@ -213,7 +222,7 @@ class DemoUrlsDisplay extends StatelessWidget {
             Text(flutter_live.FlutterLive.rtmp_publish, style: TextStyle(color: Colors.grey[500])),
           ]),
           onTap: () => _onUserSelectUrl(flutter_live.FlutterLive.rtmp_publish), contentPadding: EdgeInsets.zero,
-          leading: Radio(value: flutter_live.FlutterLive.rtmp_publish, groupValue: _url, onChanged: _onUserSelectUrl),
+          leading: Radio(value: flutter_live.FlutterLive.rtmp_publish, groupValue: _url, onChanged: (String? v) { if (v != null) _onUserSelectUrl(v); }),
         ),
         ListTile(
           title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -221,7 +230,7 @@ class DemoUrlsDisplay extends StatelessWidget {
             Text(flutter_live.FlutterLive.rtmp_publish2, style: TextStyle(color: Colors.grey[500])),
           ]),
           onTap: () => _onUserSelectUrl(flutter_live.FlutterLive.rtmp_publish2), contentPadding: EdgeInsets.zero,
-          leading: Radio(value: flutter_live.FlutterLive.rtmp_publish2, groupValue: _url, onChanged: _onUserSelectUrl),
+          leading: Radio(value: flutter_live.FlutterLive.rtmp_publish2, groupValue: _url, onChanged: (String? v) { if (v != null) _onUserSelectUrl(v); }),
         ),
       ],) : Column(children: [
         ListTile(
@@ -230,7 +239,7 @@ class DemoUrlsDisplay extends StatelessWidget {
             Text(flutter_live.FlutterLive.rtmp, style: TextStyle(color: Colors.grey[500])),
           ]),
           onTap: () => _onUserSelectUrl(flutter_live.FlutterLive.rtmp), contentPadding: EdgeInsets.zero,
-          leading: Radio(value: flutter_live.FlutterLive.rtmp, groupValue: _url, onChanged: _onUserSelectUrl),
+          leading: Radio(value: flutter_live.FlutterLive.rtmp, groupValue: _url, onChanged: (String? v) { if (v != null) _onUserSelectUrl(v); }),
         ),
         ListTile(
           title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -238,7 +247,7 @@ class DemoUrlsDisplay extends StatelessWidget {
             Text(flutter_live.FlutterLive.hls, style: TextStyle(color: Colors.grey[500])),
           ]),
           onTap: () => _onUserSelectUrl(flutter_live.FlutterLive.hls), contentPadding: EdgeInsets.zero,
-          leading: Radio(value: flutter_live.FlutterLive.hls, groupValue: _url, onChanged: _onUserSelectUrl),
+          leading: Radio(value: flutter_live.FlutterLive.hls, groupValue: _url, onChanged: (String? v) { if (v != null) _onUserSelectUrl(v); }),
         ),
         ListTile(
           title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -246,7 +255,7 @@ class DemoUrlsDisplay extends StatelessWidget {
             Text(flutter_live.FlutterLive.flv, style: TextStyle(color: Colors.grey[500])),
           ]),
           onTap: () => _onUserSelectUrl(flutter_live.FlutterLive.flv), contentPadding: EdgeInsets.zero,
-          leading: Radio(value: flutter_live.FlutterLive.flv, groupValue: _url, onChanged: _onUserSelectUrl),
+          leading: Radio(value: flutter_live.FlutterLive.flv, groupValue: _url, onChanged: (String? v) { if (v != null) _onUserSelectUrl(v); }),
         ),
         ListTile(
           title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -254,7 +263,7 @@ class DemoUrlsDisplay extends StatelessWidget {
             Text(flutter_live.FlutterLive.rtc, style: TextStyle(color: Colors.grey[500], fontSize: 15)),
           ]),
           onTap: () => _onUserSelectUrl(flutter_live.FlutterLive.rtc), contentPadding: EdgeInsets.zero,
-          leading: Radio(value: flutter_live.FlutterLive.rtc, groupValue: _url, onChanged: _onUserSelectUrl),
+          leading: Radio(value: flutter_live.FlutterLive.rtc, groupValue: _url, onChanged: (String? v) { if (v != null) _onUserSelectUrl(v); }),
         ),
         ListTile(
           title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -265,7 +274,7 @@ class DemoUrlsDisplay extends StatelessWidget {
             ),
           ]),
           onTap: () => _onUserSelectUrl(flutter_live.FlutterLive.flvs), contentPadding: EdgeInsets.zero,
-          leading: Radio(value: flutter_live.FlutterLive.flvs, groupValue: _url, onChanged: _onUserSelectUrl),
+          leading: Radio(value: flutter_live.FlutterLive.flvs, groupValue: _url, onChanged: (String? v) { if (v != null) _onUserSelectUrl(v); }),
         ),
         ListTile(
           title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -276,7 +285,7 @@ class DemoUrlsDisplay extends StatelessWidget {
             ),
           ]),
           onTap: () => _onUserSelectUrl(flutter_live.FlutterLive.hlss), contentPadding: EdgeInsets.zero,
-          leading: Radio(value: flutter_live.FlutterLive.hlss, groupValue: _url, onChanged: _onUserSelectUrl),
+          leading: Radio(value: flutter_live.FlutterLive.hlss, groupValue: _url, onChanged: (String? v) { if (v != null) _onUserSelectUrl(v); }),
         ),
       ]),
     );
@@ -323,7 +332,7 @@ class ControlDisplay extends StatelessWidget {
 
 class CameraDisplay extends StatelessWidget {
   final bool _isPublish;
-  final camera.CameraController _cameraController;
+  final camera.CameraController? _cameraController;
   CameraDisplay(this._isPublish, this._cameraController);
 
   @override
@@ -336,15 +345,16 @@ class CameraDisplay extends StatelessWidget {
       return Container();
     }
 
-    if (!_cameraController.value.isInitialized) {
+    if (_cameraController!.value.isInitialized != true) {
       return Container(child: Center(child: Text(
         'Camera not available', style: TextStyle(color: Colors.red[500]),
       )));
     }
 
+    final c = _cameraController!;
     return AspectRatio(
-        aspectRatio: _cameraController.value.aspectRatio,
-        child: camera.CameraPreview(_cameraController)
+        aspectRatio: c.value.aspectRatio,
+        child: camera.CameraPreview(c),
     );
   }
 }

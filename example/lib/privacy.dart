@@ -102,7 +102,7 @@ class PrivacyDisplay extends StatelessWidget {
                         style: TextStyle(color: Color(0xFF00CED2)),
                         recognizer: TapGestureRecognizer()
                           ..onTap = () {
-                            launch('https://ossrs.net/privacy_cn');
+                            launchUrl(Uri.parse('https://ossrs.net/privacy_cn'));
                           },
                       ),
                     ],
